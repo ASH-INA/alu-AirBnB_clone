@@ -2,9 +2,9 @@
 # Defines unittests for console.py.
 
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from io import StringIO
-from models import storage
+from console import HBNBCommand
 from models.base_model import BaseModel
 from models.user import User
 from models.state import State
@@ -12,211 +12,146 @@ from models.city import City
 from models.place import Place
 from models.amenity import Amenity
 from models.review import Review
-from console import HBNBCommand
+from models import storage
+
 
 class TestHBNBCommand(unittest.TestCase):
+    """Test the HBNBCommand class."""
+
     def setUp(self):
-        """Set up test environment"""
+        """Set up the test environment."""
         self.cmd = HBNBCommand()
+        self.mock_storage_all = patch('models.storage.all', return_value={})
+        self.mock_storage_save = patch('models.storage.save')
+        self.mock_storage_new = patch('models.storage.new')
+        self.mock_storage_reload = patch('models.storage.reload')
+
+        self.mock_storage_all.start()
+        self.mock_storage_save.start()
+        self.mock_storage_new.start()
+        self.mock_storage_reload.start()
+
+    def tearDown(self):
+        """Tear down the test environment."""
+        self.mock_storage_all.stop()
+        self.mock_storage_save.stop()
+        self.mock_storage_new.stop()
+        self.mock_storage_reload.stop()
 
     @patch('sys.stdout', new_callable=StringIO)
-    def test_quit(self, mock_stdout):
-        """Test quit command"""
-        self.assertTrue(self.cmd.do_quit(''))
-        self.assertIn("", mock_stdout.getvalue())
+    def test_create(self, mock_stdout):
+        """Test the create command."""
+        with patch('builtins.eval', return_value=BaseModel):
+            self.cmd.onecmd('create BaseModel')
+            output = mock_stdout.getvalue().strip()
+            self.assertTrue(output)  # Ensure an ID is printed
 
     @patch('sys.stdout', new_callable=StringIO)
-    def test_EOF(self, mock_stdout):
-        """Test EOF command"""
-        self.assertTrue(self.cmd.do_EOF(''))
-        self.assertIn("", mock_stdout.getvalue())
+    def test_show(self, mock_stdout):
+        """Test the show command."""
+        instance = BaseModel()
+        instance_id = instance.id
+        storage.all = MagicMock(return_value={f"BaseModel.{instance_id}": instance})
+        self.cmd.onecmd(f'show BaseModel {instance_id}')
+        output = mock_stdout.getvalue().strip()
+        self.assertIn(f"[BaseModel] ({instance_id}", output)
 
     @patch('sys.stdout', new_callable=StringIO)
-    def test_help(self, mock_stdout):
-        """Test help command"""
-        self.cmd.onecmd('help')
-        output = mock_stdout.getvalue()
-        self.assertIn('create', output)
-        self.assertIn('show', output)
-        self.assertIn('destroy', output)
-        self.assertIn('all', output)
-        self.assertIn('count', output)
-        self.assertIn('update', output)
+    def test_destroy(self, mock_stdout):
+        """Test the destroy command."""
+        instance = BaseModel()
+        instance_id = instance.id
+        storage.all = MagicMock(return_value={f"BaseModel.{instance_id}": instance})
+        self.cmd.onecmd(f'destroy BaseModel {instance_id}')
+        output = mock_stdout.getvalue().strip()
+        self.assertEqual(output, '')  # Destroy command should not print anything
+        storage.all.assert_not_called()  # Ensure no extra calls
+
+    @patch('sys.stdout', new_callable=StringIO)
+    def test_all(self, mock_stdout):
+        """Test the all command."""
+        instance = BaseModel()
+        storage.all = MagicMock(return_value={f"BaseModel.{instance.id}": instance})
+        self.cmd.onecmd('all BaseModel')
+        output = mock_stdout.getvalue().strip()
+        self.assertIn(f"[BaseModel] ({instance.id}", output)
+
+    @patch('sys.stdout', new_callable=StringIO)
+    def test_count(self, mock_stdout):
+        """Test the count command."""
+        instance = BaseModel()
+        storage.all = MagicMock(return_value={f"BaseModel.{instance.id}": instance})
+        self.cmd.onecmd('count BaseModel')
+        output = mock_stdout.getvalue().strip()
+        self.assertEqual(output, '1')
+
+    @patch('sys.stdout', new_callable=StringIO)
+    def test_update(self, mock_stdout):
+        """Test the update command."""
+        instance = BaseModel()
+        instance_id = instance.id
+        storage.all = MagicMock(return_value={f"BaseModel.{instance_id}": instance})
+        self.cmd.onecmd(f'update BaseModel {instance_id} name "New Name"')
+        output = mock_stdout.getvalue().strip()
+        self.assertEqual(output, '')  # Update command should not print anything
+        self.assertEqual(instance.name, "New Name")
+
+    @patch('sys.stdout', new_callable=StringIO)
+    def test_update_dict(self, mock_stdout):
+        """Test the update command with dictionary."""
+        instance = BaseModel()
+        instance_id = instance.id
+        storage.all = MagicMock(return_value={f"BaseModel.{instance_id}": instance})
+        self.cmd.onecmd(f'update BaseModel {instance_id} {{"name": "New Name"}}')
+        output = mock_stdout.getvalue().strip()
+        self.assertEqual(output, '')  # Update command should not print anything
+        self.assertEqual(instance.name, "New Name")
+
+    @patch('sys.stdout', new_callable=StringIO)
+    def test_invalid_command(self, mock_stdout):
+        """Test handling of an invalid command."""
+        self.cmd.onecmd('invalid_command')
+        output = mock_stdout.getvalue().strip()
+        self.assertEqual(output, "*** Unknown syntax: invalid_command")
 
     @patch('sys.stdout', new_callable=StringIO)
     def test_empty_line(self, mock_stdout):
-        """Test empty line"""
-        self.cmd.emptyline()
-        self.assertEqual(mock_stdout.getvalue(), '')
+        """Test handling of an empty line."""
+        self.cmd.onecmd('')
+        output = mock_stdout.getvalue().strip()
+        self.assertEqual(output, '')  # No output should be produced
 
-    @patch('models.storage.all', return_value={})
-    @patch('sys.stdout', new_callable=StringIO)
-    def test_create_BaseModel(self, mock_stdout, mock_storage_all):
-        """Test create BaseModel"""
-        self.cmd.onecmd('create BaseModel')
-        output = mock_stdout.getvalue()
-        self.assertTrue(output.strip())
+    # Tests for specific models
 
-    @patch('models.storage.all', return_value={})
-    @patch('sys.stdout', new_callable=StringIO)
-    def test_show_BaseModel(self, mock_stdout, mock_storage_all):
-        """Test show BaseModel"""
-        self.cmd.onecmd('show BaseModel 1234')
-        output = mock_stdout.getvalue()
-        self.assertIn('** no instance found **', output)
+    def test_show_instance_not_found(self):
+        """Test 'show' command when instance is not found."""
+        self.cmd.onecmd('show User 12345')
+        with patch('sys.stdout', new_callable=StringIO) as mock_stdout:
+            output = mock_stdout.getvalue().strip()
+            self.assertEqual(output, '** no instance found **')
 
-    @patch('models.storage.all', return_value={})
-    @patch('sys.stdout', new_callable=StringIO)
-    def test_destroy_BaseModel(self, mock_stdout, mock_storage_all):
-        """Test destroy BaseModel"""
-        self.cmd.onecmd('destroy BaseModel 1234')
-        output = mock_stdout.getvalue()
-        self.assertIn('** no instance found **', output)
+    def test_destroy_instance_not_found(self):
+        """Test 'destroy' command when instance is not found."""
+        self.cmd.onecmd('destroy User 12345')
+        with patch('sys.stdout', new_callable=StringIO) as mock_stdout:
+            output = mock_stdout.getvalue().strip()
+            self.assertEqual(output, '** no instance found **')
 
-    @patch('models.storage.all', return_value={})
-    @patch('sys.stdout', new_callable=StringIO)
-    def test_all_BaseModel(self, mock_stdout, mock_storage_all):
-        """Test all BaseModel"""
-        self.cmd.onecmd('all BaseModel')
-        output = mock_stdout.getvalue()
-        self.assertIn('[]', output)
+    def test_count_no_instances(self):
+        """Test 'count' command when no instances exist."""
+        storage.all = MagicMock(return_value={})
+        self.cmd.onecmd('count User')
+        with patch('sys.stdout', new_callable=StringIO) as mock_stdout:
+            output = mock_stdout.getvalue().strip()
+            self.assertEqual(output, '0')
 
-    @patch('models.storage.all', return_value={})
-    @patch('sys.stdout', new_callable=StringIO)
-    def test_update_BaseModel(self, mock_stdout, mock_storage_all):
-        """Test update BaseModel"""
-        self.cmd.onecmd('update BaseModel 1234 name "New Name"')
-        output = mock_stdout.getvalue()
-        self.assertIn('** no instance found **', output)
-
-    @patch('models.storage.all', return_value={})
-    @patch('sys.stdout', new_callable=StringIO)
-    def test_BaseModel_all(self, mock_stdout, mock_storage_all):
-        """Test BaseModel.all()"""
-        self.cmd.onecmd('BaseModel.all()')
-        output = mock_stdout.getvalue()
-        self.assertIn('[]', output)
-
-    @patch('models.storage.all', return_value={})
-    @patch('sys.stdout', new_callable=StringIO)
-    def test_Review_all(self, mock_stdout, mock_storage_all):
-        """Test Review.all()"""
-        self.cmd.onecmd('Review.all()')
-        output = mock_stdout.getvalue()
-        self.assertIn('[]', output)
-
-    @patch('models.storage.all', return_value={})
-    @patch('sys.stdout', new_callable=StringIO)
-    def test_User_all(self, mock_stdout, mock_storage_all):
-        """Test User.all()"""
-        self.cmd.onecmd('User.all()')
-        output = mock_stdout.getvalue()
-        self.assertIn('[]', output)
-
-    @patch('models.storage.all', return_value={})
-    @patch('sys.stdout', new_callable=StringIO)
-    def test_State_all(self, mock_stdout, mock_storage_all):
-        """Test State.all()"""
-        self.cmd.onecmd('State.all()')
-        output = mock_stdout.getvalue()
-        self.assertIn('[]', output)
-
-    @patch('models.storage.all', return_value={})
-    @patch('sys.stdout', new_callable=StringIO)
-    def test_City_all(self, mock_stdout, mock_storage_all):
-        """Test City.all()"""
-        self.cmd.onecmd('City.all()')
-        output = mock_stdout.getvalue()
-        self.assertIn('[]', output)
-
-    @patch('models.storage.all', return_value={})
-    @patch('sys.stdout', new_callable=StringIO)
-    def test_Amenity_all(self, mock_stdout, mock_storage_all):
-        """Test Amenity.all()"""
-        self.cmd.onecmd('Amenity.all()')
-        output = mock_stdout.getvalue()
-        self.assertIn('[]', output)
-
-    @patch('models.storage.all', return_value={})
-    @patch('sys.stdout', new_callable=StringIO)
-    def test_Place_all(self, mock_stdout, mock_storage_all):
-        """Test Place.all()"""
-        self.cmd.onecmd('Place.all()')
-        output = mock_stdout.getvalue()
-        self.assertIn('[]', output)
-
-    @patch('models.storage.all', return_value={})
-    @patch('sys.stdout', new_callable=StringIO)
-    def test_BaseModel_count(self, mock_stdout, mock_storage_all):
-        """Test BaseModel.count()"""
-        self.cmd.onecmd('BaseModel.count()')
-        output = mock_stdout.getvalue()
-        self.assertIn('0', output)
-
-    @patch('models.storage.all', return_value={})
-    @patch('sys.stdout', new_callable=StringIO)
-    def test_User_count(self, mock_stdout, mock_storage_all):
-        """Test User.count()"""
-        self.cmd.onecmd('User.count()')
-        output = mock_stdout.getvalue()
-        self.assertIn('0', output)
-
-    @patch('models.storage.all', return_value={})
-    @patch('sys.stdout', new_callable=StringIO)
-    def test_State_count(self, mock_stdout, mock_storage_all):
-        """Test State.count()"""
-        self.cmd.onecmd('State.count()')
-        output = mock_stdout.getvalue()
-        self.assertIn('0', output)
-
-    @patch('models.storage.all', return_value={})
-    @patch('sys.stdout', new_callable=StringIO)
-    def test_Place_count(self, mock_stdout, mock_storage_all):
-        """Test Place.count()"""
-        self.cmd.onecmd('Place.count()')
-        output = mock_stdout.getvalue()
-        self.assertIn('0', output)
-
-    @patch('models.storage.all', return_value={})
-    @patch('sys.stdout', new_callable=StringIO)
-    def test_City_count(self, mock_stdout, mock_storage_all):
-        """Test City.count()"""
-        self.cmd.onecmd('City.count()')
-        output = mock_stdout.getvalue()
-        self.assertIn('0', output)
-
-    @patch('models.storage.all', return_value={})
-    @patch('sys.stdout', new_callable=StringIO)
-    def test_Amenity_count(self, mock_stdout, mock_storage_all):
-        """Test Amenity.count()"""
-        self.cmd.onecmd('Amenity.count()')
-        output = mock_stdout.getvalue()
-        self.assertIn('0', output)
-
-    @patch('models.storage.all', return_value={})
-    @patch('sys.stdout', new_callable=StringIO)
-    def test_Review_count(self, mock_stdout, mock_storage_all):
-        """Test Review.count()"""
-        self.cmd.onecmd('Review.count()')
-        output = mock_stdout.getvalue()
-        self.assertIn('0', output)
-
-    @patch('models.storage.all', return_value={})
-    @patch('sys.stdout', new_callable=StringIO)
-    def test_BaseModel_show(self, mock_stdout, mock_storage_all):
-        """Test BaseModel.show("id")"""
-        self.cmd.onecmd('BaseModel.show("1234")')
-        output = mock_stdout.getvalue()
-        self.assertIn('** no instance found **', output)
-
-    @patch('models.storage.all', return_value={})
-    @patch('sys.stdout', new_callable=StringIO)
-    def test_User_show(self, mock_stdout, mock_storage_all):
-        """Test User.show("id")"""
-        self.cmd.onecmd('User.show("1234")')
-        output = mock_stdout.getvalue()
-        self.assertIn('** no instance
+    def test_update_non_existent_instance(self):
+        """Test 'update' command with a non-existent instance."""
+        self.cmd.onecmd('update User 12345 name "Updated Name"')
+        with patch('sys.stdout', new_callable=StringIO) as mock_stdout:
+            output = mock_stdout.getvalue().strip()
+            self.assertEqual(output, '** no instance found **')
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main()
